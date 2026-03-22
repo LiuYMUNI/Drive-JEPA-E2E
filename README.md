@@ -49,7 +49,7 @@ MTD, the proposals show multimodal distribution.</p>
 
 ## 🗓️ TODO
 - [✔] Release code and checkpoints for navsim v1
-- [ ] Release code and checkpoints for navsim v2
+- [✔] Release code and checkpoints for navsim v2
 - [ ] Release code and checkpoints for Bench2Drive
 
 ## Data and weights
