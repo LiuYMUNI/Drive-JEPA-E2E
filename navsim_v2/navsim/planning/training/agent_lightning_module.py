@@ -51,7 +51,7 @@ class AgentLightningModule(pl.LightningModule):
         :param batch_idx: index of batch (ignored)
         :return: scalar loss
         """
-        if 'Pad' in self.agent.name():
+        if 'Pad' in self.agent.name() or 'perception_based' in self.agent.name():
             features, targets = batch
             predictions = self.agent.forward(features)
             all_res=predictions["trajectory"][:,None]

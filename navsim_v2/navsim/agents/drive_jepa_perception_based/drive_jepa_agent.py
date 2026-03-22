@@ -51,7 +51,7 @@ class DriveJEPAAgent(AbstractAgent):
 
     def name(self) -> str:
         """Inherited, see superclass."""
-        return self.__class__.__name__
+        return 'drive_jepa_perception_based_agent' 
 
     def initialize(self) -> None:
         """Inherited, see superclass."""
