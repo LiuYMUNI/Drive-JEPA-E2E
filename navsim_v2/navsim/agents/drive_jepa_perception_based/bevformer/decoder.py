@@ -5,6 +5,8 @@ import copy
 import warnings
 from matplotlib import pyplot as plt
 import numpy as np
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -316,7 +318,8 @@ class CustomMSDeformableAttention(BaseModule):
             raise ValueError(
                 f'Last dim of reference_points must be'
                 f' 2 or 4, but get {reference_points.shape[-1]} instead.')
-        if torch.cuda.is_available() and value.is_cuda:
+        use_cuda_op = torch.cuda.is_available() and value.is_cuda and os.getenv("DRIVE_JEPA_FORCE_PYTORCH_DEFORMABLE", "0") != "1"
+        if use_cuda_op:
 
             # using fp16 deformable attention is unstable because it performs many sum operations
             if value.dtype == torch.float16:

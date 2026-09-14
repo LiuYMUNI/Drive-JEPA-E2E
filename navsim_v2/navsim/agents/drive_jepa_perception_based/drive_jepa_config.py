@@ -9,6 +9,10 @@ from nuplan.common.maps.abstract_map import SemanticMapLayer
 
 @dataclass
 class DriveJEPAConfig:
+    # Keep the original PDM/anchor-supervised objective by default. When false,
+    # training uses only the logged future trajectory target.
+    pdm_supervision: bool = True
+
     b2d: bool = False
 
     ref_num: int=4

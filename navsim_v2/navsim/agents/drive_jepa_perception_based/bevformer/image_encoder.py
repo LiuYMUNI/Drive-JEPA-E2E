@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import torch
 import numpy as np
 import torch.nn as nn
@@ -30,8 +31,10 @@ class ImgEncoder(nn.Module):
         self.use_grid_mask = True
         
         image_architecture = "vit_large"
-        pretrain_pt_path = f"{os.getenv('NAVSIM_EXP_ROOT')}/Drive-JEPA-cache/vitl_merge_3dataset_e50.pt"
-        fname = "./vjepa2/configs/eval/vitl/in1k.yaml"
+        cache_root = os.getenv("DRIVE_JEPA_CACHE_ROOT", f"{os.getenv('NAVSIM_EXP_ROOT')}/Drive-JEPA-cache")
+        pretrain_pt_path = f"{cache_root}/vitl_merge_3dataset_e50.pt"
+        repo_root = Path(__file__).resolve().parents[4]
+        fname = repo_root / "vjepa2/configs/eval/vitl/in1k.yaml"
         with open(fname, "r") as y_file:
             params = yaml.load(y_file, Loader=yaml.FullLoader)
 

@@ -1,5 +1,7 @@
 from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch
 import warnings
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -412,7 +414,8 @@ class MSDeformableAttention3D(BaseModule):
         #  attention_weights.shape: bs, num_query, num_heads, num_levels, num_all_points
         #
 
-        if torch.cuda.is_available() and value.is_cuda:
+        use_cuda_op = torch.cuda.is_available() and value.is_cuda and os.getenv("DRIVE_JEPA_FORCE_PYTORCH_DEFORMABLE", "0") != "1"
+        if use_cuda_op:
             if value.dtype == torch.float16:
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
             else:

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -22,8 +23,10 @@ class ImgEncoder(nn.Module):
         self.use_grid_mask = True 
         
         image_architecture = "vit_large"
-        pretrain_pt_path = f"{os.getenv('NAVSIM_EXP_ROOT')}/Drive-JEPA-cache/vitl_merge_3dataset_e50.pt"
-        fname = "./vjepa2/configs/eval/vitl/in1k.yaml"
+        cache_root = os.getenv("DRIVE_JEPA_CACHE_ROOT", f"{os.getenv('NAVSIM_EXP_ROOT')}/Drive-JEPA-cache")
+        pretrain_pt_path = f"{cache_root}/vitl_merge_3dataset_e50.pt"
+        repo_root = Path(__file__).resolve().parents[4]
+        fname = repo_root / "vjepa2/configs/eval/vitl/in1k.yaml"
         with open(fname, "r") as y_file:
             params = yaml.load(y_file, Loader=yaml.FullLoader)
 
@@ -35,6 +38,13 @@ class ImgEncoder(nn.Module):
             model_kwargs["encoder"]["model_name"] = image_architecture
             self.img_backbone = init_module(resolution, pretrain_pt_path, model_kwargs, wrapper_kwargs, register_prehook=False)
 
+        # The 4060 profile freezes V-JEPA to fit its 8 GB memory budget. Set
+        # DRIVE_JEPA_FREEZE_VJEPA=0 to reproduce the upstream fine-tuning path.
+        self.freeze_backbone = os.getenv("DRIVE_JEPA_FREEZE_VJEPA", "0") == "1"
+        if self.freeze_backbone:
+            self.img_backbone.requires_grad_(False)
+            self.img_backbone.eval()
+
         self.projector = nn.Linear(1024, self.embed_dims)
 
     def forward(self,img,len_queue=None,**kwargs):
@@ -44,7 +54,12 @@ class ImgEncoder(nn.Module):
         if self.use_grid_mask:
             img = self.grid_mask(img)
         img = rearrange(img, '(B N) C H W -> B C N H W', B=B)
-        img_feat = self.img_backbone(img)#7,12
+        if self.freeze_backbone:
+            self.img_backbone.eval()
+            with torch.no_grad():
+                img_feat = self.img_backbone(img)#7,12
+        else:
+            img_feat = self.img_backbone(img)#7,12
         img_feat = self.projector(img_feat)
         img_feat = rearrange(img_feat, 'B (H W) C -> B C H W', H=16, W=32)
 

@@ -50,6 +50,19 @@ CONFIG_PATH = "config/pdm_scoring"
 CONFIG_NAME = "default_run_pdm_score"
 
 
+def localize_metric_cache_paths(metric_cache_loader: MetricCacheLoader, cache_path: Path) -> None:
+    """Resolve absolute paths recorded on another machine against this cache."""
+    cache_path = cache_path.resolve()
+    marker = f"/{cache_path.name}/"
+    localized = {}
+    for token, recorded_path in metric_cache_loader.metric_cache_paths.items():
+        path = Path(recorded_path)
+        if not path.is_file() and marker in str(path):
+            path = cache_path / str(path).split(marker, 1)[1]
+        localized[token] = path
+    metric_cache_loader.metric_cache_paths = localized
+
+
 def move_all_modules_to_gpu(instance):
     """
     Move all nn.Module attributes of a class instance to GPU.
@@ -86,7 +99,9 @@ def run_pdm_score(
     traffic_agents_policy: AbstractTrafficAgentsPolicy = instantiate(
         cfg.traffic_agents_policy, simulator.proposal_sampling
     )
-    metric_cache_loader = MetricCacheLoader(Path(cfg.metric_cache_path))
+    metric_cache_root = Path(cfg.metric_cache_path)
+    metric_cache_loader = MetricCacheLoader(metric_cache_root)
+    localize_metric_cache_paths(metric_cache_loader, metric_cache_root)
     pdm_results: List[pd.DataFrame] = []
     for a in args:
         log_names = [a["log_file"]]
@@ -477,7 +492,9 @@ def main(cfg: DictConfig) -> None:
         scene_filter=instantiate(cfg.train_test_split.scene_filter),
         sensor_config=SensorConfig.build_no_sensors(),
     )
-    metric_cache_loader = MetricCacheLoader(Path(cfg.metric_cache_path))
+    metric_cache_root = Path(cfg.metric_cache_path)
+    metric_cache_loader = MetricCacheLoader(metric_cache_root)
+    localize_metric_cache_paths(metric_cache_loader, metric_cache_root)
 
     tokens_to_evaluate = list(
         set(scene_loader.tokens) & set(metric_cache_loader.tokens)

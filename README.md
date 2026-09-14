@@ -27,6 +27,10 @@ Distillation for End-to-End Driving</h1>
 - [Citation](#citation)
 - [Acknowledgements](#acknowledgements)
 
+## Fork: pose-only training and NAVTEST evaluation
+
+This fork adds the opt-in `pdm_supervision=false` training objective and RTX 4060 runtime adaptations. See [the experiment and evaluation notes](docs/POSE_ONLY_NAVTEST.md) for the completed runs, reproduction commands, retained scorer behavior, and the NAVSIM human-filter aggregation issue corrected here. The upstream PDM-supervised objective remains the default.
+
 ## 📖 Abstract
 End-to-end autonomous driving increasingly leverages self-supervised video pretraining to learn transferable planning representations. However, pretraining video world models for scene understanding has so far brought only limited improvements. This limitation is compounded by the inherent ambiguity of driving: each scene typically provides only a single human trajectory, making it difficult to learn multimodal behaviors. In this work, we propose Drive-JEPA, a framework that integrates Video Joint-Embedding Predictive Architecture (V-JEPA) with multimodal trajectory distillation for end-to-end driving. First, we adapt V-JEPA for end-to-end driving, pretraining a ViT encoder on large-scale driving videos to produce predictive representations aligned with trajectory planning. Second, we introduce a proposal-centric planner that distills diverse simulator-generated trajectories alongside human trajectories, with a momentum-aware selection mechanism to promote stable and safe behavior. When evaluated on NAVSIM, the V-JEPA representation combined with a simple transformer-based decoder outperforms prior methods by 3 PDMS in the perception-free setting. The complete Drive-JEPA framework achieves 93.3 PDMS on v1 and 87.8 EPDMS on v2, setting a new state-of-the-art.
 

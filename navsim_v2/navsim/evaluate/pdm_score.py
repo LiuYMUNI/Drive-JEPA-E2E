@@ -20,6 +20,9 @@ from navsim.common.dataclasses import Trajectory
 from navsim.common.enums import SceneFrameType
 from navsim.planning.metric_caching.metric_cache import MetricCache
 from navsim.planning.simulation.planner.pdm_planner.scoring.pdm_scorer import PDMScorer
+from navsim.planning.simulation.planner.pdm_planner.utils.pdm_enums import (
+    WeightedMetricIndex,
+)
 from navsim.planning.simulation.planner.pdm_planner.simulation.pdm_simulator import (
     PDMSimulator,
 )
@@ -283,5 +286,30 @@ def pdm_score_from_interpolated_trajectory(
                 continue
             if human_pdm_result[column].iloc[0] == 0:
                 pdm_result.at[0, column] = 1
+
+        # The human-penalty filter changes the public metric columns above.
+        # Keep the hidden aggregates used by the final-score calculation in
+        # sync with those post-filter values as well.
+        row = pdm_result.iloc[0]
+        multiplicative = np.array(
+            [
+                row["no_at_fault_collisions"],
+                row["drivable_area_compliance"],
+                row["traffic_light_compliance"],
+                row["driving_direction_compliance"],
+            ],
+            dtype=np.float64,
+        )
+        weighted = np.asarray(row["weighted_metrics"], dtype=np.float64).copy()
+        weighted[WeightedMetricIndex.PROGRESS] = row["ego_progress"]
+        weighted[WeightedMetricIndex.TTC] = row["time_to_collision_within_bound"]
+        weighted[WeightedMetricIndex.LANE_KEEPING] = row["lane_keeping"]
+        weighted[WeightedMetricIndex.HISTORY_COMFORT] = row["history_comfort"]
+        pdm_result.at[0, "multiplicative_metrics_prod"] = float(np.prod(multiplicative))
+        pdm_result.at[0, "weighted_metrics"] = weighted
+        pdm_result.at[0, "pdm_score"] = float(
+            np.prod(multiplicative)
+            * np.average(weighted, weights=np.asarray(row["weighted_metrics_array"]))
+        )
 
     return pdm_result, simulated_states[pred_idx]

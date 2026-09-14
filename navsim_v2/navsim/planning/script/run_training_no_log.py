@@ -152,12 +152,13 @@ def main(cfg: DictConfig) -> None:
     #     save_top_k=1,
     #     save_last=True,
     # )
+    pdm_supervision = getattr(getattr(agent, "_config", None), "pdm_supervision", True)
     checkpoint_cb = ModelCheckpoint(
         dirpath=cfg.output_dir + "/checkpoints/",
         save_top_k=5,
-        monitor='val/score_epoch',
+        monitor='val/score_epoch' if pdm_supervision else 'val/loss_epoch',
         filename='{epoch}-{step}',
-        mode="max"
+        mode="max" if pdm_supervision else "min"
     )
     lr_monitor = LearningRateMonitor(logging_interval='step')
     callbacks = agent.get_training_callbacks() + [checkpoint_cb, lr_monitor]

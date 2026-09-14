@@ -37,17 +37,26 @@ class DriveJEPAAgent(AbstractAgent):
         if not cache_data:
             self._pad_model = DriveJEPAModel(config)
 
-        if not cache_data and self._checkpoint_path == "":  # only for training
+        if not cache_data and self._checkpoint_path == "" and self._config.pdm_supervision:  # only for PDM training
             self.bce_logit_loss = nn.BCEWithLogitsLoss()
 
             self.persistent_pool = ProcessPoolExecutor(max_workers=16)
 
-            metric_cache = MetricCacheLoader(Path(os.getenv("NAVSIM_EXP_ROOT") + "/Drive-JEPA-cache/train_metric_cache_v2_pruned"))
-            self.train_metric_cache_paths = metric_cache.metric_cache_paths
-            self.test_metric_cache_paths = metric_cache.metric_cache_paths
+            metric_cache_root = Path(
+                os.getenv("DRIVE_JEPA_CACHE_ROOT", os.getenv("NAVSIM_EXP_ROOT") + "/Drive-JEPA-cache")
+            )
+            metric_cache = MetricCacheLoader(metric_cache_root / "train_metric_cache_v2_pruned")
+            # The released metadata CSV contains the authors' absolute paths. Resolve
+            # those paths against the local cache root so scoring also finds anchors.
+            self.train_metric_cache_paths = {
+                token: Path(str(path).replace("/scratch/linhan", str(metric_cache_root)))
+                for token, path in metric_cache.metric_cache_paths.items()
+            }
+            self.test_metric_cache_paths = self.train_metric_cache_paths
         
-        poses = np.load("./data/8192.npy")
-        self.anchors = poses[:, 4::5]
+        if self._config.pdm_supervision:
+            poses = np.load(Path(__file__).resolve().parents[3] / "data/8192.npy")
+            self.anchors = poses[:, 4::5]
 
     def name(self) -> str:
         """Inherited, see superclass."""
@@ -223,7 +232,9 @@ class DriveJEPAAgent(AbstractAgent):
 
         min_loss_list = []
         inter_loss_list = []
-        for proposals_i, idx_arr in zip(proposal_list, scores_index):
+        # proposal_list contains one proposal tensor per refinement stage;
+        # scores_index is per batch item and must not control this iteration.
+        for proposals_i in proposal_list:
             min_loss = (
                 torch.linalg.norm(proposals_i - target_trajectory[:, None], dim=-1, ord=1)
                 .mean(-1)
@@ -267,6 +278,37 @@ class DriveJEPAAgent(AbstractAgent):
             inter_loss_list.append(inter_loss)
 
         return trajectory_loss, min_loss, inter_loss, min_loss_list, inter_loss_list
+
+    def trajectory_loss_pose_only(self, proposal_list, target_trajectory, config):
+        """Train every proposal directly against the logged future trajectory."""
+        trajectory_loss = target_trajectory.new_zeros(())
+        stage_losses = []
+        for proposals_i in proposal_list:
+            target = target_trajectory[:, None].expand_as(proposals_i)
+            stage_loss = F.l1_loss(proposals_i, target)
+            trajectory_loss = config.prev_weight * trajectory_loss + stage_loss
+            stage_losses.append(stage_loss)
+
+        zero = trajectory_loss.detach() * 0
+        return trajectory_loss, stage_losses[-1], zero, stage_losses, [zero] * len(stage_losses)
+
+    def pose_only_loss(self, targets: Dict[str, torch.Tensor], pred: Dict[str, torch.Tensor], config: DriveJEPAConfig):
+        trajectory_loss, min_loss, inter_loss, min_loss_list, inter_loss_list = self.trajectory_loss_pose_only(
+            pred["proposal_list"], targets["trajectory"], config
+        )
+        return {
+            "loss": config.trajectory_weight * trajectory_loss,
+            "trajectory_loss": trajectory_loss,
+            "sub_score_loss": inter_loss,
+            "final_score_loss": inter_loss,
+            "pred_ce_loss": inter_loss,
+            "pred_l1_loss": inter_loss,
+            "pred_area_loss": inter_loss,
+            "inter_loss0": inter_loss,
+            "inter_loss": inter_loss,
+            "min_loss0": min_loss_list[0],
+            "min_loss": min_loss,
+        }
     
     def pad_loss(self, targets: Dict[str, torch.Tensor], pred: Dict[str, torch.Tensor], config: DriveJEPAConfig):
         proposals = pred["proposals"]
@@ -351,17 +393,23 @@ class DriveJEPAAgent(AbstractAgent):
         targets: Dict[str, torch.Tensor],
         pred: Dict[str, torch.Tensor],
     ) -> Dict:
+        if not self._config.pdm_supervision:
+            return self.pose_only_loss(targets, pred, self._config)
         return self.pad_loss(targets, pred, self._config)
 
     def get_optimizers(self):
-        # Smaller lr for vjepa encoder
-        return torch.optim.Adam(
-            [
-                {"params": self._pad_model._backbone.parameters(), "lr": 0.1 * self._lr},
-                {"params": [p for n, p in self._pad_model.named_parameters() if "backbone" not in n], "lr": self._lr},
-            ],
-            lr=self._lr,
-        )
+        # Use a smaller lr for a trainable V-JEPA backbone, while excluding
+        # frozen parameters from the optimizer on the 4060 profile.
+        backbone_params = [p for p in self._pad_model._backbone.parameters() if p.requires_grad]
+        head_params = [
+            p for n, p in self._pad_model.named_parameters() if "backbone" not in n and p.requires_grad
+        ]
+        param_groups = []
+        if backbone_params:
+            param_groups.append({"params": backbone_params, "lr": 0.1 * self._lr})
+        if head_params:
+            param_groups.append({"params": head_params, "lr": self._lr})
+        return torch.optim.Adam(param_groups, lr=self._lr)
 
     def get_training_callbacks(self):
         return []

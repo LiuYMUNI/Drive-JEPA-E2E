@@ -140,12 +140,13 @@ def main(cfg: DictConfig) -> None:
     wandb_logger = WandbLogger(name=cfg.experiment_name, save_dir=cfg.output_dir + '/wandb', project='navsim')
     wandb_logger.log_hyperparams(log_config)
 
+    pdm_supervision = getattr(getattr(agent, "_config", None), "pdm_supervision", True)
     checkpoint_cb = ModelCheckpoint(
         dirpath=cfg.output_dir + "/checkpoints/",
         save_top_k=1,
-        monitor='val/score_epoch',
+        monitor='val/score_epoch' if pdm_supervision else 'val/loss_epoch',
         filename='best_{epoch}',
-        mode="max"
+        mode="max" if pdm_supervision else "min"
     )
     lr_monitor = LearningRateMonitor(logging_interval='step')
     callbacks = agent.get_training_callbacks() + [checkpoint_cb, lr_monitor]

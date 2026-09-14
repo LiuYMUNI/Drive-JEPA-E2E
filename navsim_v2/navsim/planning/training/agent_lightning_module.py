@@ -29,8 +29,9 @@ class AgentLightningModule(pl.LightningModule):
         prediction = self.agent.forward(features)
         loss_dict = self.agent.compute_loss(features, targets, prediction)
         if isinstance(loss_dict, dict):
+            on_epoch = logging_prefix == "val"
             for key,value in loss_dict.items():
-                self.log(f"{logging_prefix}/"+key, value, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
+                self.log(f"{logging_prefix}/"+key, value, on_step=True, on_epoch=on_epoch, prog_bar=True, sync_dist=True)
             return loss_dict["loss"]
         else:
             return loss_dict
@@ -51,7 +52,8 @@ class AgentLightningModule(pl.LightningModule):
         :param batch_idx: index of batch (ignored)
         :return: scalar loss
         """
-        if 'Pad' in self.agent.name() or 'perception_based' in self.agent.name():
+        pdm_supervision = getattr(getattr(self.agent, "_config", None), "pdm_supervision", True)
+        if ('Pad' in self.agent.name() or 'perception_based' in self.agent.name()) and pdm_supervision:
             features, targets = batch
             predictions = self.agent.forward(features)
             all_res=predictions["trajectory"][:,None]
